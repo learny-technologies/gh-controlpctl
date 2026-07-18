@@ -103,7 +103,7 @@ install() {
   if [[ ! -x "$version_directory/bin/$COMMAND" ]]; then
     rm -rf "$version_directory"
     if ! "$python" -m venv "$version_directory" || \
-      ! "$version_directory/bin/python" -m pip install --disable-pip-version-check --no-input "$temporary/$wheel"; then
+      ! "$version_directory/bin/python" -m pip install --quiet --disable-pip-version-check --no-input "$temporary/$wheel"; then
       rm -rf "$version_directory"
       die "Unable to install controlpctl $version."
     fi
