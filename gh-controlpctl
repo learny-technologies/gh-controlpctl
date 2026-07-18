@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# GitHub CLI extension for installing the private Learny controlpctl release.
+set -euo pipefail
+
+readonly REPOSITORY="learny-technologies/control-plane-workspace"
+readonly PACKAGE="controlp"
+readonly COMMAND="controlpctl"
+readonly MIN_PYTHON_MAJOR=3
+readonly MIN_PYTHON_MINOR=12
+
+data_home="${XDG_DATA_HOME:-$HOME/.local/share}/controlpctl"
+bin_home="${XDG_BIN_HOME:-$HOME/.local/bin}"
+
+die() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  gh controlpctl install
+  gh controlpctl update
+  gh controlpctl status
+
+The install and update commands use the existing `gh auth login` session to
+download the private controlpctl release. They do not read, print, or store a
+GitHub token.
+EOF
+}
+
+require_github_login() {
+  gh auth status --hostname github.com >/dev/null 2>&1 || die \
+    "GitHub authentication is required. Run: gh auth login"
+}
+
+find_python() {
+  local candidate
+  for candidate in python3.12 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && \
+      "$candidate" -c "import sys; raise SystemExit(0 if sys.version_info >= (${MIN_PYTHON_MAJOR}, ${MIN_PYTHON_MINOR}) else 1)"; then
+      command -v "$candidate"
+      return
+    fi
+  done
+
+  die "Python 3.12 or newer is required. Install it with: brew install python@3.12"
+}
+
+latest_version() {
+  local tag
+  tag="$(gh release view --repo "$REPOSITORY" --json tagName --jq '.tagName')" || die \
+    "Unable to read the private controlpctl release. Confirm that your GitHub account has access to ${REPOSITORY}."
+  [[ "$tag" == v* ]] || die "Unexpected release tag: $tag"
+  printf '%s\n' "${tag#v}"
+}
+
+verify_checksum() {
+  local wheel="$1"
+  local checksum_file="$2"
+  local expected actual
+
+  expected="$(awk 'NR == 1 { print $1 }' "$checksum_file")"
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "Release checksum is invalid."
+  actual="$(shasum -a 256 "$wheel" | awk '{ print $1 }')"
+  [[ "$actual" == "$expected" ]] || die "Release checksum verification failed."
+}
+
+link_command() {
+  local installed_command="$1"
+  local destination="$bin_home/$COMMAND"
+  local existing
+
+  mkdir -p "$bin_home"
+  if [[ -e "$destination" || -L "$destination" ]]; then
+    existing="$(readlink "$destination" 2>/dev/null || true)"
+    [[ "$existing" == "$data_home"/versions/*/bin/$COMMAND ]] || die \
+      "$destination already exists and is not managed by gh-controlpctl. Move it aside before installing."
+  fi
+  ln -sfn "$installed_command" "$destination"
+}
+
+install() {
+  local python version wheel checksum temporary version_directory
+
+  require_github_login
+  python="$(find_python)"
+  version="$(latest_version)"
+  wheel="${PACKAGE}-${version}-py3-none-any.whl"
+  checksum="${wheel}.sha256"
+  version_directory="$data_home/versions/$version"
+  mkdir -p "$data_home/versions"
+  temporary="$(mktemp -d "$data_home/.install.XXXXXXXX")"
+  trap 'rm -rf "$temporary"' EXIT
+
+  gh release download "v${version}" --repo "$REPOSITORY" \
+    --pattern "$wheel" --pattern "$checksum" --dir "$temporary" || die \
+    "Unable to download the private controlpctl release."
+  [[ -f "$temporary/$wheel" && -f "$temporary/$checksum" ]] || die \
+    "The release is missing a required controlpctl asset."
+  verify_checksum "$temporary/$wheel" "$temporary/$checksum"
+
+  if [[ ! -x "$version_directory/bin/$COMMAND" ]]; then
+    rm -rf "$version_directory"
+    if ! "$python" -m venv "$version_directory" || \
+      ! "$version_directory/bin/python" -m pip install --disable-pip-version-check --no-input "$temporary/$wheel"; then
+      rm -rf "$version_directory"
+      die "Unable to install controlpctl $version."
+    fi
+  fi
+
+  link_command "$version_directory/bin/$COMMAND"
+  trap - EXIT
+  rm -rf "$temporary"
+
+  printf 'Installed %s %s at %s\n' "$COMMAND" "$version" "$bin_home/$COMMAND"
+  case ":$PATH:" in
+    *":$bin_home:"*) ;;
+    *) printf 'Add %s to PATH to use %s directly.\n' "$bin_home" "$COMMAND" ;;
+  esac
+}
+
+status() {
+  local destination="$bin_home/$COMMAND"
+  if [[ -x "$destination" ]]; then
+    printf '%s -> %s\n' "$destination" "$(readlink "$destination" 2>/dev/null || printf 'not a symlink')"
+  else
+    printf '%s is not installed. Run: gh controlpctl install\n' "$COMMAND"
+  fi
+}
+
+case "${1:-help}" in
+  install|update)
+    install
+    ;;
+  status)
+    status
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
