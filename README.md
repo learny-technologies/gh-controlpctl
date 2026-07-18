@@ -37,10 +37,11 @@ controlpctl auth login
 
 ```bash
 gh controlpctl update
-gh extension upgrade controlpctl
 ```
 
-`gh controlpctl update` obtains the latest non-draft private release, verifies its published SHA-256 checksum, and switches only the `controlpctl` symlink after the installation succeeds.
+`gh controlpctl update` first updates this extension, then obtains the latest non-draft private
+release, verifies its published SHA-256 checksum, and switches only the `controlpctl` symlink after
+the installation succeeds.
 
 ## Commands
 

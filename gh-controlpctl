@@ -120,6 +120,13 @@ install() {
   esac
 }
 
+update() {
+  if ! gh extension upgrade controlpctl; then
+    printf 'warning: could not update the extension; continuing with its current version.\n' >&2
+  fi
+  install
+}
+
 status() {
   local destination="$bin_home/$COMMAND"
   if [[ -x "$destination" ]]; then
@@ -130,8 +137,11 @@ status() {
 }
 
 case "${1:-help}" in
-  install|update)
+  install)
     install
+    ;;
+  update)
+    update
     ;;
   status)
     status
