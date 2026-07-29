@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import os
@@ -15,7 +16,15 @@ from pathlib import Path
 
 REPOSITORY = "learny-technologies/gh-controlpctl"
 SCOPES = json.loads(
-    '[{"id":"automation-contract","paths":[".github/workflows/**","scripts/validate_local.py","automation.yaml"],"commands":["actionlint","git diff --check"]},{"id":"extension","paths":["gh-controlpctl"],"commands":["bash -n gh-controlpctl"]},{"id":"documentation","paths":["README.md","automation.yaml"],"commands":["git diff --check"]}]'
+    base64.b64decode(
+        "W3siaWQiOiJhdXRvbWF0aW9uLWNvbnRyYWN0IiwicGF0aHMiOlsiLmdpdGh1Yi93"
+        "b3JrZmxvd3MvKioiLCJzY3JpcHRzL3ZhbGlkYXRlX2xvY2FsLnB5IiwiYXV0b21h"
+        "dGlvbi55YW1sIl0sImNvbW1hbmRzIjpbImFjdGlvbmxpbnQiLCJnaXQgZGlmZiAt"
+        "LWNoZWNrIl19LHsiaWQiOiJleHRlbnNpb24iLCJwYXRocyI6WyJnaC1jb250cm9s"
+        "cGN0bCJdLCJjb21tYW5kcyI6WyJiYXNoIC1uIGdoLWNvbnRyb2xwY3RsIl19LHsi"
+        "aWQiOiJkb2N1bWVudGF0aW9uIiwicGF0aHMiOlsiUkVBRE1FLm1kIiwiYXV0b21h"
+        "dGlvbi55YW1sIl0sImNvbW1hbmRzIjpbImdpdCBkaWZmIC0tY2hlY2siXX1d"
+    )
 )
 
 
@@ -54,14 +63,13 @@ def changed_files(base: str, head: str) -> tuple[str, list[str]]:
     return merge_base, [item for item in output.splitlines() if item]
 
 
+def matches_any(path: str, patterns: list[str]) -> bool:
+    return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+
 def scope_selected(scope: dict[str, object], changed: list[str], run_all: bool) -> bool:
-    if run_all:
-        return True
     patterns = [str(item) for item in scope["paths"]]
-    for path in changed:
-        if any(fnmatch.fnmatch(path, pattern) for pattern in patterns):
-            return True
-    return False
+    return run_all or any(matches_any(path, patterns) for path in changed)
 
 
 def selected_scopes(changed: list[str], run_all: bool) -> list[dict[str, object]]:
