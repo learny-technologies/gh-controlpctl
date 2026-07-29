@@ -1,0 +1,24 @@
+apiVersion: automation.learny.technology/v1alpha1
+kind: RepositoryAutomation
+metadata:
+  repository: learny-technologies/gh-controlpctl
+  profiles: [package-release]
+localValidation:
+  scopes:
+    - id: extension
+      paths:
+        - "gh-controlpctl"
+      commands:
+        - "bash -n gh-controlpctl"
+    - id: documentation
+      paths:
+        - "README.md"
+        - "automation.yaml"
+      commands:
+        - "git diff --check"
+sourceGate:
+  enabled: true
+  checkName: Validation gate
+artifacts: []
+delivery:
+  pipelines: []
